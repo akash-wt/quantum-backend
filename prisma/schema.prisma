@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  wallet_address      String    @unique @db.VarChar(44)
+  username            String?   @db.VarChar(50)
+  email               String?   @db.VarChar(255)
+  reputation_score    Int       @default(1000)
+  total_volume        Decimal   @default(0) @db.Decimal(20, 9)
+  win_rate            Decimal   @default(0) @db.Decimal(5, 4)
+  total_predictions   Int       @default(0)
+  correct_predictions Int       @default(0)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @updatedAt @db.Timestamptz(6)
+  is_verified         Boolean   @default(false)
+  kyc_level           Int       @default(0)
+  referral_code       String?   @unique @db.VarChar(10)
+  referred_by         String?
+  last_active         DateTime? @db.Timestamptz(6)
+  signature_count     Int       @default(0)
+  nonce               String?   @db.VarChar(32)
+  nonce_expires       DateTime? @db.Timestamptz(6)
+
+  // Relations
+  referrer        User?         @relation("UserReferrals", fields: [referred_by], references: [id])
+  referrals       User[]        @relation("UserReferrals")
+  created_markets Market[]      @relation
+  positions       Position[]    @relation
+  transaction     Transaction[] @relation()
+
+  @@index([wallet_address])
+  @@index([reputation_score(sort: Desc)])
+  @@index([total_volume(sort: Desc)])
+  @@index([last_active(sort: Desc)])
+}
+
+model Market {
+  id          String         @id @default(cuid())
+  question    String         @db.Text
+  description String?        @db.Text
+  category    MarketCategory @default(CRYPTO)
+  market_type String         @default("BINARY") @db.VarChar(20)
+
+  // Market Configuration
+  creator_id          String?
+  oracle_source       String  @db.VarChar(50)
+  oracle_config       Json
+  resolution_criteria String  @db.Text
+
+  // Timing
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  end_time        DateTime  @db.Timestamptz(6)
+  resolution_time DateTime? @db.Timestamptz(6)
+
+  // Market State
+  status  MarketStatus @default(ACTIVE)
+  outcome Boolean?
+
+  // Financial Data
+  total_volume   Decimal @default(0) @db.Decimal(20, 9)
+  yes_pool       Decimal @default(0) @db.Decimal(20, 9)
+  no_pool        Decimal @default(0) @db.Decimal(20, 9)
+  fee_percentage Decimal @default(0.03) @db.Decimal(5, 4)
+
+  // Metadata
+  tags      String[]
+  image_url String?  @db.VarChar(500)
+  featured  Boolean  @default(false)
+
+  // Smart Contract
+  contract_address String? @db.VarChar(44)
+  program_id       String? @db.VarChar(44)
+
+  // Relations
+  creator      User?         @relation(fields: [creator_id], references: [id])
+  positions    Position[]    @relation()
+  transactions Transaction[] @relation()
+  oracle_data  Oracle_Data[] @relation()
+
+  @@index([status])
+  @@index([category])
+  @@index([end_time])
+  @@index([total_volume(sort: Desc)])
+  @@index([featured, status])
+}
+
+model Position {
+  id        String @id @default(cuid())
+  user_id   String
+  market_id String
+
+  // Position Details
+  position_type String  @db.VarChar(10) // "YES" or "NO"
+  amount_staked Decimal @db.Decimal(20, 9)
+  shares_owned  Decimal @db.Decimal(20, 9)
+  average_price Decimal @db.Decimal(10, 6)
+
+  // Settlement
+  settled       Boolean @default(false)
+  payout_amount Decimal @default(0) @db.Decimal(20, 9)
+  profit_loss   Decimal @default(0) @db.Decimal(20, 9)
+
+  // Timestamps
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  settled_at DateTime? @db.Timestamptz(6)
+
+  // Transaction References
+  stake_tx_hash  String? @db.VarChar(88)
+  payout_tx_hash String? @db.VarChar(88)
+
+  // Relations
+  user         User          @relation(fields: [user_id], references: [id])
+  market       Market        @relation(fields: [market_id], references: [id])
+  transactions Transaction[] @relation()
+
+  @@unique([user_id, market_id, position_type])
+  @@index([user_id])
+  @@index([market_id])
+  @@index([settled])
+}
+
+model Transaction {
+  id          String  @id @default(cuid())
+  user_id     String
+  market_id   String?
+  position_id String?
+
+  // Transaction Details
+  type   String  @db.VarChar(20) // 'STAKE', 'PAYOUT', 'FEE', 'REFUND'
+  amount Decimal @db.Decimal(20, 9)
+  token  String  @default("SOL") @db.VarChar(10)
+
+  // Blockchain Data
+  tx_hash      String? @unique @db.VarChar(88)
+  block_height BigInt?
+  slot         BigInt?
+  status       String  @default("PENDING") @db.VarChar(20) // 'PENDING', 'CONFIRMED', 'FAILED'
+
+  // Metadata
+  metadata     Json?
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  confirmed_at DateTime? @db.Timestamptz(6)
+
+  // Relations
+  user     User      @relation(fields: [user_id], references: [id])
+  market   Market?   @relation(fields: [market_id], references: [id])
+  position Position? @relation(fields: [position_id], references: [id])
+
+  @@index([user_id])
+  @@index([tx_hash])
+  @@index([status])
+}
+
+model Oracle_Data {
+  id        String @id @default(cuid())
+  market_id String
+
+  // Oracle Information
+  source    String @db.VarChar(50)
+  data_type String @db.VarChar(30) // 'PRICE', 'VOLUME', 'SOCIAL', 'EVENT'
+
+  // Data
+  raw_data        Json
+  processed_value Decimal? @db.Decimal(20, 9)
+  string_value    String?  @db.Text
+  boolean_value   Boolean?
+
+  // Metadata
+  confidence_score Decimal? @db.Decimal(3, 2) // 0.00 to 1.00
+  timestamp        DateTime @db.Timestamptz(6)
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  market Market @relation(fields: [market_id], references: [id])
+
+  @@index([market_id])
+  @@index([timestamp(sort: Desc)])
+  @@index([source, data_type])
+}
+
+enum MarketCategory {
+  CRYPTO
+  STOCKS
+  TECHNOLOGY
+  GAMING
+  DEFI_EVENTS
+  CELEBRITY_CRYPTO
+  AI_GAMING
+  MARKET_EVENTS
+}
+
+enum MarketStatus {
+  ACTIVE
+  RESOLVED
+  CANCELLED
+}
