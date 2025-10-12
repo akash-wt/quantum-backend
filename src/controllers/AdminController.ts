@@ -152,7 +152,8 @@ class AdminController {
                 oracle_config,
                 resolution_criteria,
                 status,
-                featured
+                featured,
+                pda
             } = req.body;
 
             // check if user has admin privileges (kyc_level >= 3)
@@ -198,6 +199,7 @@ class AdminController {
             if (resolution_criteria) updateData.resolution_criteria = resolution_criteria;
             if (status) updateData.status = status;
             if (featured !== undefined) updateData.featured = featured;
+            if (pda !== undefined) updateData.pda = pda
             const market = await prisma.market.update({
                 where: { id },
                 data: updateData

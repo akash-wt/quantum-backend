@@ -42,17 +42,17 @@ model User {
 }
 
 model Market {
-  id          String         @id @default(cuid())
-  question    String         @db.Text
-  description String?        @db.Text
-  category    MarketCategory @default(CRYPTO)
-  market_type String         @default("BINARY") @db.VarChar(20)
-
+  id                  String         @id @default(cuid())
+  question            String         @db.Text
+  description         String?        @db.Text
+  category            MarketCategory @default(CRYPTO)
+  market_type         String         @default("BINARY") @db.VarChar(20)
+  pda                 String?
   // Market Configuration
   creator_id          String?
-  oracle_source       String  @db.VarChar(50)
+  oracle_source       String         @db.VarChar(50)
   oracle_config       Json
-  resolution_criteria String  @db.Text
+  resolution_criteria String         @db.Text
 
   // Timing
   created_at      DateTime  @default(now()) @db.Timestamptz(6)
