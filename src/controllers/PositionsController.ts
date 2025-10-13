@@ -1,7 +1,8 @@
 import { type Request, type Response } from 'express';
 import TradingService from '../services/TradingService.js';
-import type { Position } from '@prisma/client';
 import { type PositionWithMarket } from '../types.js';
+import { prisma } from '../prismaClient.js';
+import { json } from 'stream/consumers';
 
 
 
@@ -14,7 +15,7 @@ class PositionsController {
 
     private async checkPositionAccessPermission(requestingUserId: string, targetUserId: string): Promise<{
         allowed: boolean;
-        reason?: string; 
+        reason?: string;
     }> {
         try {
             // If user is requesting their own positions
@@ -44,9 +45,9 @@ class PositionsController {
                 return { allowed: true };
             }
 
-            return { 
-                allowed: false, 
-                reason: 'Insufficient permissions to view other user positions' 
+            return {
+                allowed: false,
+                reason: 'Insufficient permissions to view other user positions'
             };
         } catch (error) {
             console.error('Error in permission check:', error);
@@ -122,9 +123,9 @@ class PositionsController {
                 profit_loss: positions
                     .filter(p => p.settled)
                     .reduce((sum, p) => sum + Number(p.profit_loss), 0),
-                win_rate: positions.filter(p => p.settled).length > 0 
-                    ? positions.filter(p => p.settled && Number(p.profit_loss) > 0).length / 
-                      positions.filter(p => p.settled).length 
+                win_rate: positions.filter(p => p.settled).length > 0
+                    ? positions.filter(p => p.settled && Number(p.profit_loss) > 0).length /
+                    positions.filter(p => p.settled).length
                     : 0
             };
 
@@ -136,7 +137,7 @@ class PositionsController {
                     question: p.market.question,
                     total_volume: Number(p.market.total_volume),
                     position_type: p.position_type,
-                    current_odds: p.position_type === 'YES' 
+                    current_odds: p.position_type === 'YES'
                         ? Number(p.market.yes_pool) / Number(p.market.total_volume)
                         : Number(p.market.no_pool) / Number(p.market.total_volume)
                 }))
@@ -159,7 +160,7 @@ class PositionsController {
             });
         } catch (error: any) {
             console.error('Error in getPositions:', error);
-            
+
             if (error instanceof Error) {
                 if (error.message.includes('user not found')) {
                     res.status(404).json({
@@ -235,7 +236,7 @@ class PositionsController {
                     ? (Number(position.profit_loss) / Number(position.amount_staked)) * 100
                     : null,
                 time_held: Math.floor((
-                    (position.settled_at || new Date()).getTime() - 
+                    (position.settled_at || new Date()).getTime() -
                     position.created_at.getTime()
                 ) / (1000 * 60 * 60 * 24)) // days
             };
@@ -260,7 +261,7 @@ class PositionsController {
             });
         } catch (error: unknown) {
             console.error('Error in getPositionById:', error);
-            
+
             if (error instanceof Error) {
                 if (error.message.includes('not found')) {
                     res.status(404).json({
@@ -294,7 +295,7 @@ class PositionsController {
                 return;
             }
 
-            const { 
+            const {
                 userId,
                 page = '1',
                 limit = '20',
@@ -425,7 +426,7 @@ class PositionsController {
             });
         } catch (error: unknown) {
             console.error('Error in getPositionHistory:', error);
-            
+
             if (error instanceof Error) {
                 if (error.message.includes('not found')) {
                     res.status(404).json({
@@ -476,7 +477,7 @@ class PositionsController {
 
             // get position details first to verify ownership
             const position = await this.tradingService.getPositionById(positionId);
-            
+
             if (!position) {
                 res.status(404).json({
                     success: false,
@@ -538,6 +539,101 @@ class PositionsController {
                 success: false,
                 message: 'Failed to claim position winnings'
             });
+        }
+    }
+
+    async addPostion(req: Request, res: Response): Promise<void> {
+        try {
+            const u_id = req.user?.sub;
+            const { market_id, position_type, amount_staked, stake_tx_hash } = req.body;
+
+            if (!market_id || !position_type || !amount_staked || !u_id) {
+                res.status(400).json({
+                    success: false,
+                    message: "Missing required fields"
+                })
+                return
+            }
+
+            const position = await prisma.position.upsert({
+                where: {
+                    user_id_market_id_position_type: {
+                        user_id: u_id,
+                        market_id,
+                        position_type
+                    },
+                },
+                update: {
+                    amount_staked: {
+                        increment: amount_staked,
+                    },
+                    stake_tx_hash,
+                },
+                create: {
+                    user_id: u_id,
+                    market_id,
+                    position_type,
+                    amount_staked,
+                    shares_owned: 0,
+                    average_price: 0,
+                    stake_tx_hash,
+                }
+            })
+
+            const market = await prisma.market.findUnique({ where: { id: market_id } });
+            if (!market) {
+                res.status(404).json({
+                    success: false, message: "MArket not found"
+                })
+                return
+            }
+
+            const updateMarket = await prisma.market.update({
+                where: { id: market_id },
+                data: {
+                    total_volume: market.total_volume.plus(amount_staked),
+                    yes_pool:
+                        position_type === "YES"
+                            ? market.yes_pool.plus(amount_staked)
+                            : market.yes_pool,
+                    no_pool:
+                        position_type === "NO"
+                            ? market.no_pool.plus(amount_staked)
+                            : market.no_pool
+                }
+            })
+
+            const updateUser = await prisma.user.update({
+                where: { id: u_id },
+                data: {
+                    total_predictions: {
+                        increment: 1
+                    },
+
+                }
+            })
+
+            const MarketTransactions = await prisma.marketTransactions.create({
+                data: {
+                    market_id,
+                    user_id: u_id,
+                    tx_hash: stake_tx_hash,
+                    amount: amount_staked
+                }
+            })
+
+            // const getUserBetOnMarket= await prisma.userBetOnMarket
+
+            res.status(201).json({
+                success: true,
+                data: { position, updateMarket }
+            })
+        } catch (error: any) {
+            console.error("Error adding postion:", error)
+            res.status(500).json({
+                success: false,
+                message: "INternal server error"
+            })
         }
     }
 }

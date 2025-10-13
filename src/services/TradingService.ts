@@ -96,6 +96,7 @@ class TradingService {
       throw new Error('Failed to fetch user positions');
     }
   }
+  
 
   async getPositionById(positionId: string): Promise<Position | null> {
     try {

@@ -117,7 +117,7 @@ class MarketService {
           _count: {
             select: {
               positions: true,
-              transactions: true
+              // transactions: true
             }
           }
         }
@@ -191,7 +191,7 @@ class MarketService {
             _count: {
               select: {
                 positions: true,
-                transactions: true
+                // transactions: true
               }
             }
           },
@@ -316,7 +316,7 @@ class MarketService {
           _count: {
             select: {
               positions: true,
-              transactions: true
+              // transactions: true
             }
           }
         },
@@ -366,7 +366,7 @@ class MarketService {
           _count: {
             select: {
               positions: true,
-              transactions: true
+              // transactions: true
             }
           }
         },

@@ -43,7 +43,7 @@ class AdminController {
                     _count: {
                         select: {
                             positions: true,
-                            transactions: true
+                            // transactions: true
                         }
                     }
                 },

@@ -29,16 +29,33 @@ model User {
   nonce_expires       DateTime? @db.Timestamptz(6)
 
   // Relations
-  referrer        User?         @relation("UserReferrals", fields: [referred_by], references: [id])
-  referrals       User[]        @relation("UserReferrals")
-  created_markets Market[]      @relation
-  positions       Position[]    @relation
-  transaction     Transaction[] @relation()
+  referrer        User?    @relation("UserReferrals", fields: [referred_by], references: [id])
+  referrals       User[]   @relation("UserReferrals")
+  created_markets Market[] @relation
+
+  positions          Position[]           @relation
+  transaction        Transaction[]        @relation()
+  // userBets           UserBetOnMarket[]    @relation
+  marketTransactions MarketTransactions[] @relation()
 
   @@index([wallet_address])
   @@index([reputation_score(sort: Desc)])
   @@index([total_volume(sort: Desc)])
   @@index([last_active(sort: Desc)])
+}
+
+model MarketTransactions {
+  id        String   @id @default(cuid())
+  market_id String
+  user_id   String
+  tx_hash   String   @db.VarChar(88)
+  amount    Decimal  @db.Decimal(20, 9)
+
+  market Market @relation(fields: [market_id], references: [id])
+  user   User   @relation(fields: [user_id], references: [id])
+
+  @@index([market_id])
+  @@map("MarketTransactions")
 }
 
 model Market {
@@ -79,10 +96,12 @@ model Market {
   program_id       String? @db.VarChar(44)
 
   // Relations
-  creator      User?         @relation(fields: [creator_id], references: [id])
-  positions    Position[]    @relation()
-  transactions Transaction[] @relation()
-  oracle_data  Oracle_Data[] @relation()
+  creator            User?                @relation(fields: [creator_id], references: [id])
+  positions          Position[]           @relation()
+  oracle_data        Oracle_Data[]        @relation()
+  // userBets           UserBetOnMarket[]    @relation
+  marketTransactions MarketTransactions[] @relation()
+  Transaction        Transaction[]
 
   @@index([status])
   @@index([category])
@@ -90,6 +109,20 @@ model Market {
   @@index([total_volume(sort: Desc)])
   @@index([featured, status])
 }
+
+// model UserBetOnMarket {
+//   id        String @id @default(cuid())
+//   market_id String
+//   user_id   String
+//   yes_pool  Int
+//   no_pool   Int
+
+//   user   User   @relation(fields: [user_id], references: [id])
+//   market Market @relation(fields: [market_id], references: [id])
+
+//  @@unique([user_id, market_id]) 
+//   @@map("UserBetOnMarket")
+// }
 
 model Position {
   id        String @id @default(cuid())
